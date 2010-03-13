@@ -4,7 +4,7 @@
  * Does all the magic!
  *
  * @package    pcDTR
- * @version    3.0.1
+ * @version    3.1.1
  *
  * @author     Otherland <info@otherland.se>
  * @link       http://www.otherland.se
@@ -20,22 +20,22 @@
 // no direct access
 defined( '_JEXEC' ) or die( 'Restricted access' );
 defined( 'DS' ) || define( 'DS', DIRECTORY_SEPARATOR );
+//error_reporting(E_ERROR | E_WARNING | E_PARSE | E_NOTICE);
 
 if($mainframe->isAdmin()) {
 	return;
 }
 
 jimport( 'joomla.plugin.plugin' );
-
 /**
  * Joomla! pcDTR plugin
  *
  * @package		Joomla
  * @subpackage	System
  */
-class  plgSystempcDTR extends JPlugin
+class plgSystempcDTR extends JPlugin
 {
-
+	var $poweredBy			= '<!-- pcDTR 3.1.1 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
 	function plgSystempcDTR(& $subject, $config)
 	{
 		global $mainframe;
@@ -46,451 +46,672 @@ class  plgSystempcDTR extends JPlugin
 		}
 		parent::__construct($subject, $config);
 	}
-
+	
 	function onAfterInitialise()
 	{
-		global $mainframe;
+		$document 		=& JFactory::getDocument();
 		$plugin			=& JPluginHelper::getPlugin('system', 'pcdtr');
 		$pluginParams	= new JParameter($plugin->params);
 
-		$mainframe->addCustomHeadTag('<link rel="stylesheet" href="'.JURI::base(true).'/'.$pluginParams->get('heading_css').'" type="text/css" media="screen" />');
-		$mainframe->addCustomHeadTag('<link rel="stylesheet" href="'.JURI::base(true).'/plugins/system/pcdtr/css.php" type="text/css" media="screen" />');
+		$document->addStyleSheet(JURI::base(true).'/'.$pluginParams->get('heading_css'),'text/css',"screen");
+		$document->addStyleSheet(JURI::base(true).'plugins/system/pcdtr/css.php','text/css',"screen");
+		$document->addStyleDeclaration('css.change');
+
+		$path = JPath::clean(JPATH_CACHE.DS.'pcDTR'.DS);
+		if (!is_dir($path) && !is_file($path))
+		{
+			jimport('joomla.filesystem.*');
+			JFolder::create($path, 0777);
+			JFile::write($path.DS."index.html", "<html>\n<body bgcolor=\"#FFFFFF\">\n</body>\n</html>");
+		}
 	}
 
 	function onAfterRender() 
 	{
+		$t['start_all'] = microtime(true);
+		require_once('pcdtr/parseCSS.php');
+		require_once('pcdtr/simple_html_dom.php');
+		
 		$plugin			=& JPluginHelper::getPlugin('system', 'pcdtr');
 		$pluginParams	= new JParameter($plugin->params);
-
-		$dtr = new pcDTR($pluginParams);
-
-		require_once('pcdtr/parseCSS.php');
-		$css = new CSS();
-		$css->parseFile($pluginParams->get('heading_css'));
-		$css->css = array_reverse($css->css,true);		
-
-		require_once('pcdtr/simple_html_dom.php');
-		$dom = new simple_html_dom();
-	
-		$body = JResponse::getBody();
-		$dom->load($body);
-		$parentel = '';
-
-		foreach ($css->css as $el=>$styles)
-		{
-			if(isset($styles['font-size']))	$styles['font-size']=floatval($styles['font-size']);
-			if(isset($styles['font-family'])) $styles['font-family']=$dtr->findFont($styles['font-family']);
-			// cascade
-			$parentExists=false;
-
-			$tmp=explode(' ',$el);
-			array_pop($tmp);
-			$parentNode=implode(' ',$tmp);
-			if(isset($css->css[$parentNode]))
-			{
-				$parentExists=true;
-				$parentStyles=$css->css[$parentNode];
-				if(!isset($styles['font-size']) && isset($parentStyles['font-size'])) $styles['font-size']=floatval($parentStyles['font-size']);
-				if(!isset($styles['font-family']) && isset($parentStyles['font-family'])) $styles['font-family']=$dtr->findFont($parentStyles['font-family']);
-			}
-
-			$styles[0]=$el;
-			$dtr->setCss($el, $styles);
+		$css			= new CSS();
+		$dom			= new simple_html_dom();
+		$body 			= JResponse::getBody();
+		$skipClass 		= explode(',',$pluginParams->get('skip_class'));
 		
-			foreach($dom->find($el) as $node)
+		$css->parseFile($pluginParams->get('heading_css'));
+		$css->css = $css->css;
+		if (!is_array($css->csstags)) return false;
+		$css->csstags = array_reverse($css->csstags,true);
+
+		$dtr			= new pcDTR($pluginParams, $css);
+		
+		$t['start_dom'] = microtime(true);
+		$dom->load($body);
+		
+		foreach ($css->csstags as $tag) {
+			if ($dtr->get(array($tag, 'parentExists'), 0, '_param')) continue;
+			
+			foreach ($dom->find($tag) as $node)
 			{
-				// skip if inner tag
-				if(substr($node->class,-5)=='pcdtr' || $parentExists) continue;
-				// Add spans with ids
-				if ($node->parent->class=='mce_editable' || $node->parent->class=='mceEditor') continue; 
-				$split=$dtr->splitElement($node, $el);
-				if(!$split)
+				if (substr($node->class,-5)=='pcdtr') continue;
+				foreach ($skipClass as $class) if ($node->parent->class == $class) continue;
+
+				if (!$dtr->get(array($tag, 'fontFile'), 0, '_param'))
 				{
 					$node->outertext.='<!--font not found-->';
 					continue;
-				}	
-				// Add class
-				if(substr($node->parent->class,-5)!='pcdtr')
+				}
+				
+				$split = $dtr->splitElement($node, $tag);
+
+				if (substr($node->parent->class,-5)!='pcdtr')
 				{
-					if($node->class)$node->class.=' ';
-						$node->class.='pcdtr';
+					if ($node->class) $node->class.=' ';
+					$node->class.='pcdtr';
 				}
 				$node->innertext=$split;
 			}
 		}
-		// create the images and change the temp name to image path
+		$css = $dtr->createCss();
+		$dom = str_replace('css.change', $css, $dom);
+		$t['end_dom'] = microtime(true);
+		$t['start_img'] = microtime(true);
 		list($groups, $change) = $dtr->createImage();
-		if ($groups) {
-			foreach ($groups as $n=>$group) {
-				$dom = str_replace('changeme.'.$group, JURI::base(true).'/'.$this->params->get('cache_dir').'/'.$change[$n], $dom);
+		if ($groups) 
+		{
+			foreach ($groups as $n=>$group)
+			{
+				$outPath = substr(JPATH_CACHE, strlen(JPATH_BASE)+1).'/'.'pcDTR'.'/';
+				$dom = str_replace('url.change.'.$group, $outPath.$change[$n], $dom);
 			}
 		}
+		$t['end_img'] = microtime(true);
+		$t['end_all'] = microtime(true);
+		$tttime1=round(($t['end_all']-$t['start_all']),4);
+		$tttime2=round(($t['end_dom']-$t['start_dom']),4);
+		$tttime3=round(($t['end_img']-$t['start_img']),4);
+
+		$this->poweredBy = str_replace('%s', '. Time total: '.$tttime1.'sec. Time Parse: '.$tttime2.'sec. Time img: '.$tttime3.'sec', $this->poweredBy);
+		$dom = str_replace('</body>', $this->poweredBy.'</body>', $dom);
 		JResponse::setBody($dom);
 	}
+	
 }
 
-class pcDTR 
+class pcDTR
 {
-	var $params = null;
-	var $selector = null;
-	var $hover = array();
-	var $hoverselector = null;
-	var $styles = null;
-	var $width = array();
-	var $height = array();
-	var $_items = array();
-	var $dummy = null;
-
-	function __construct(&$params)
+	var $_params 	= null;
+	var $_data 		= array();
+	var $_css		= null;
+	var $_items		= array();
+	
+	function __construct(&$params, $css)
 	{
-		$this->params = $params;
+		$this->_params = $params;
+		//parse our css and group them into groups
+		$this->groupCss($css);
+		//create hash strings for our css groups
+		$this->createHash();
 		//check resample rate
-		if ($this->params->get('resample_rate') > 4 || $this->params->get('resample_rate') < 1)
-			$this->params->set('resample_rate', 1);
+		if ($this->_params->get('resample_rate') > 4 || $this->_params->get('resample_rate') < 1)
+			$this->_params->set('resample_rate', 1);
 		$this->id = 1;
-		$this->dummy = imagecreate(1, 1);
+		$this->lineCounter = 1;
+		$this->set('dummy', imagecreate(1, 1));
 	}
-
-	function setCss($el, $style) 
+	
+	function set($property, $value=null, $array='_default')
 	{
-		$this->styles[$el] = $style;
-		if (preg_match('/:hover/', $el))
+		if (is_array($value)) 
 		{
-			$this->hover[] = str_replace(':hover', '', $el);
-			$this->hoverselector[str_replace(':hover', '', $el)] = $el;
+			if (isset($this->_data[$array]->$property) && is_array($this->_data[$array]->$property))
+				$this->_data[$array]->$property += $value;
+			else 
+				$this->_data[$array]->$property = $value;
+			return current($value);
+		} 
+		else 
+		{
+			$this->_data[$array]->$property = $value;
+			return $value;
 		}
-		$this->selector = $el;
 	}
-
-	function splitElement($node, $selector)
+	
+	function get($property, $default=null, $array='_default')
 	{
-		$tag = $node->tag;
-		$txtNode = $node->innertext;
-		$innerSplit = explode('<', $txtNode);
-		$inner = '';
-
-		foreach ($innerSplit as $icount=>$innerstr)
-		{ 
-			$tmp = explode('>', $innerstr);
-			if(count($tmp)>1 && substr($innerstr,0,1)!='/')
+		if (is_array($property)) 
+		{
+			if (isset($this->_data[$array]->$property[0])) 
 			{
-				$attrs = explode(' ', trim($tmp[0]));
-				$innerTag = array_shift($attrs);
-				$this->styles[$selector][0] = $selector.' '.$innerTag;
-				$innerHTML = $this->addSpans($tmp[1]);
-				if ($innerHTML===false)return $inner;
-					$inner .= '<'.$tmp[0].'>'.trim($innerHTML).'</'.$innerTag.'>';
-			} else {
-				$inner .= $this->addSpans(array_pop($tmp));
+				$tmp = $this->_data[$array]->$property[0];
+				if (isset($tmp[$property[1]]))
+					return $tmp[$property[1]];
 			}
 		}
-		return $inner;
+		else 
+		{
+			if (isset($this->_data[$array]->$property))
+				return $this->_data[$array]->$property;
+		}
+		return $default;
+	}
+	
+	function def($property, $default=null)
+	{
+		if (isset($property)) 
+			return $property;
+		return $default;
+	}	
+
+	/**
+	 * Splits up a element
+	 *
+	 * @param	dom node, element tag
+	 * @return 	new innertext with dtr tags
+	 */
+	function splitElement($node, $tag)
+	{
+		$this->set('tag', $tag);
+		$innertext = '';
+		$this->hoverLineCounter = 1;
+		$this->set('last_width', 0);
+		$string = str_replace(array("\t","\n"),'',$node->innertext);
+		$innerSplit = array_filter(explode('<', $string));
+		$item = new pcDTRItem();
+		
+		$item->set('hash', md5(json_encode($innerSplit)));
+		$item->set('string', $string);
+		$this->set('item', $item);
+
+		if (count($innerSplit) > 1)
+		{
+			foreach ($innerSplit as $num => $innerstr) {
+				if (isset($innerSplit[$num+1])) {
+					$nextstr = $innerSplit[$num+1];
+					$nexttmp = explode('>', $nextstr);
+					$nextInnerTag = $this->set('nextInnerTag', array_shift(explode(' ', trim($nexttmp[0]))));
+				}
+				
+				$tmp = explode('>', $innerstr);
+				if(count($tmp) > 1 && substr($innerstr,0,1) != '/')
+				{
+					$attrs = explode(' ', trim($tmp[0]));
+					$innerTag = $this->set('innerTag', array_shift($attrs));
+					$innerHTML = $this->changeElement(array_pop($tmp), $tag, $innerTag);
+					if ($innerTag == 'br')
+						$innertext .= '<'.$tmp[0].'>'.$innerHTML;
+					else
+						$innertext .= '<'.$tmp[0].'>'.$innerHTML.'</'.$innerTag.'>';	
+				}
+				elseif (substr($innerstr,0,1) == '/' && $tmp[1] != '' || substr($innerstr,0,1) != '/')
+				{
+					$innerTag = $this->set('innerTag', substr($innerstr,0,1) == '/' ? substr($innerstr,0,2) : null );
+					$innertext .= $this->changeElement(array_pop($tmp), $tag);
+				}
+			}
+		}
+		else 
+		{
+			$innertext = $this->changeElement(trim($node->innertext), $tag);
+		}
+		$this->_items[$this->get('group')][] = $item;
+		$this->id++;
+		return $innertext;
 	}
 
-	function addSpans($string)
-	{
+	/**
+	 * Adds pcdtr spans to out elements
+	 *
+	 * @param 	string text to dtr, element tag, innertag
+	 * @return 	a span with text and id
+	 */
+	function changeElement($string, $tag, $innerTag = null) {
 		$inline = 'span';
-		$font_file = isset($this->styles[$this->selector]['font-family']) ? JPATH_SITE.DS.$this->params->get('fonts_dir').DS.$this->styles[$this->selector]['font-family'] : null;
-		if(!file_exists($font_file)) return false;		
-		
-		$string = trim($string);
-		if (!$string) return '';	
-		$decoded = html_entity_decode($string, ENT_COMPAT, 'UTF-8');
-		//create our pcDTR item and read all css info
-		$item = new pcDTRItem($this->params);
-		$this->setCssItem($item);
-		$string=$decoded;
-		if ($item->get('text-transform'))
-		{
-			if ($item->get('text-transform')=='uppercase') $string=mb_strtoupper($string);
-			if ($item->get('text-transform')=='lowercase') $string=mb_strtolower($string);
-		}
-		//wrap lines and get widths
-		list($lines,$line_widths) = $this->imagettftextbox($item->get('font-size'),$item->get('font-family'),$string,$item->get('letter-spacing',0),$item->get('width'),$item->get('group', 'default'));
-		$item->set('lines', $lines);
-		$item->set('line-widths', $line_widths);
-		//set line height
-		if ($item->get('line-height',0)) {
-			$height = $item->get('line-height');
-		} else {
-			$bbox = imagettfbbox($item->get('font-size'),0,$item->get('font-family'),$this->params->get('test_string'));
-			$height = abs($bbox[5])+abs($bbox[3]);
-		}
-		$item->set('height', $height);
-
-		if ($item->get('hover')) {
-			$string=$decoded;
-			if ($item->get('text-transform',null,'hover'))
-			{
-				if ($item->get('text-transform',null,'hover')=='uppercase') $string=mb_strtoupper($string);
-				if ($item->get('text-transform',null,'hover')=='lowercase') $string=mb_strtolower($string);
-			}
-		
-			list($lines,$line_widths) = $this->imagettftextbox($item->get('font-size',null,'hover'),$item->get('font-family',null,'hover'),$string,$item->get('letter-spacing',0,'hover'),$item->get('width',null,'hover'),$item->get('group', 'default'));
-			$item->set('lines',$lines,'hover');
-			$item->set('line-widths',$line_widths,'hover');
-		
-			if ($item->get('line-height',0,'hover')) {
-				$height = $item->get('line-height',null,'hover');
-			} else {
-				$bbox = imagettfbbox($item->get('font-size',null,'hover'),0,$item->get('font-family',null,'hover'),$this->params->get('test_string'));
-				$height = abs($bbox[5])+abs($bbox[3]);
-			}
-			$item->set('height',$height,'hover');
-		}
-		if (!isset($this->height[$item->get('group', 'default')])) $this->height[$item->get('group', 'default')] = 0;
-		//create the span and style html
 		$out = '';
-		foreach($lines as $n=>$text)
-		{	
-			$css = "<style type=\"text/css\">";
-			$width = $item->get('line-widths');
-			$width = $item->get('width', 0) > 0 ? $item->get('width') : $width[$n];
-			$css .= "#pcdtr".$this->id."{background-image:url(changeme.".$item->get('group', 'default').");background-position:0 -".$this->height[$item->get('group', 'default')]."px;width:".$width."px;height:".$item->get('height')."px;}";
-			$this->height[$item->get('group', 'default')] += $item->get('height');
-			if ($item->get('hover', 0))
-			{
-				$width = $item->get('line-widths',null,'hover');
-				$width = $item->get('width',0,'hover') > 0 ? $item->get('width',null,'hover') : $width[$n];
-				$css .= "\n".$item->get('hover-selector')." #pcdtr".$this->id."{background-position:0 -".$this->height[$item->get('group', 'default')]."px;width:".$width."px;height:".$item->get('height',null,'hover')."px;}";
-				$this->height[$item->get('group', 'default')] += $item->get('height',null,'hover');
-			}
-			$css .= "</style>";
-			$out .= $css;
-			$out .= '<'.$inline.' id="pcdtr'.$this->id.'">'.htmlspecialchars($text).'</'.$inline.'>';
-			$this->id++;
+
+		if ($this->get($tag.' '.$innerTag, 0, '_param'))
+			$tag = $this->set('tag', $tag.' '.$innerTag);
+		else 
+			$tag = $this->set('tag', $tag);
+
+		$group = $this->set('group', $this->get(array($tag, 'group'), 'default', '_param'));
+		$decoded = html_entity_decode($string, ENT_COMPAT, 'UTF-8');
+
+		$decoded = $this->get(array($tag, 'textUppercase'), 0, '_param') ? mb_strtoupper($decoded) : $decoded;
+		$decoded = $this->get(array($tag, 'textLowercase'), 0, '_param') ? mb_strtolower($decoded) : $decoded;
+
+		if ($hovertag = $this->hover()) 
+		{
+				$tmp = $this->get('last_width', 0);
+				$css = $this->get('css_hover:'.$hovertag, 0, $group);
+				$lines = $this->imagettftextbox($css->font_size,$this->get(array($hovertag, 'fontFile'), 0, '_param'),$decoded,$css->letter_spacing,$css->line_height,$css->width, 1);
+				$this->set('last_width', $tmp);
 		}
-		//save our pcDTR item
-		$this->_items[$item->get('group', 'default')][] = $item;
+
+		$css = $this->get('css:'.$tag, 0, $group);
+		$lines = $this->imagettftextbox($css->font_size,$this->get(array($tag, 'fontFile'), 0, '_param'),$decoded,$css->letter_spacing,$css->line_height,$css->width);
+
+		foreach($lines as $key => $item)
+		{
+			$out .= '<'.$inline.' id="pcdtr'.$key.'">'.htmlspecialchars($item).'</'.$inline.'>';
+		}
+
 		return $out;
 	}
 
-	function setCssItem($item)
-	{	
-		$tmp = explode(' ', $this->selector);
-		$innertag = array_pop($tmp);
-		$parentSelector = implode(' ',$tmp);
-		$parent_info = $hover_style = null;
-	
-		if(isset($this->styles[$parentSelector]))
-			$parent_info = $this->styles[$parentSelector];
+	/**
+	 * Calculates how much text to fit in each inline element
+	 */
+	function imagettftextbox($font_size, $font_file, $string, $kerning = 0, $line_height = 0, $width = 0, $hover = 0) {
+		$black = imagecolorallocate($this->get('dummy'), 0, 0, 0);
+		$group = $this->get('group', 'default');
+		$item = $this->get('item');
+		$lines = array();
 
-		if(!isset($this->styles[$this->selector]) && isset($parent_info))
-			$style = $parent_info;
-		else if(isset($this->styles[$this->selector]))
-			$style = $this->styles[$this->selector];
-		else 
-			$style=array();
-
-		if (in_array($style[0], $this->hover))
+		if ($line_height) 
 		{
-			$item->set('hover', true);
-			$item->set('hover-selector', $this->hoverselector[$style[0]]);
-
-			$hover_style = $this->styles[$item->get('hover-selector')];
+			$height = $line_height;
+		} 
+		else
+		{
+			$bbox = imagettfbbox($font_size,0,$font_file,$this->_params->get('test_string'));
+			$height = abs($bbox[5])+abs($bbox[3]);
 		}
 
-		$values = array('group', 'width', 'font-size', 'font-family', 'text-align', 'text-decoration', 'text-transform', 'letter-spacing', 'line-height', 'color', 'background-color', 'background-transparent');
-		foreach ($values as $value)
+		$bbox = imagettftext($this->get('dummy'), $font_size*$this->_params->get('resample_rate'), 0, 0, 0, $black, $font_file, ' ');
+		$line_space = ($bbox[2] + $kerning) / $this->_params->get('resample_rate');
+
+		if ($width==0)
 		{
-			$item->setCss($value, $style, $parent_info, $hover_style);
-			if (in_array($value, array('width', 'letter-spacing', 'line-height')))
+			$wrap = wordwrap($string, $this->_params->get('letter_wrap'), ' \n');
+			$text_lines = explode('\n',$wrap);
+			
+			foreach ($text_lines as $word) 
 			{
-				if ($item->get($value)) $item->set($value,floatval($item->get($value)));
-				if ($item->get($value,null,'hover')) $item->set($value, floatval($item->get($value,null,'hover')),'hover');
+				if ($this->get('nextInnerTag') == 'br' && end($text_lines) == $word) $word = rtrim($word);
+				if ($this->get('innerTag') == 'br') $word = ltrim($word);
+				$line_width = 0;
+				$letters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY);
+				foreach ($letters as $letter)
+				{
+					$bbox = imagettftext($this->get('dummy'), $font_size*$this->_params->get('resample_rate'), 0, 0, 0, $black, $font_file, $letter);
+					$line_width += (($bbox[2] + $kerning) / $this->_params->get('resample_rate'));
+				}
+				$this->set('width', $this->get('width', 0, $group) < round($line_width) ? round($line_width) : $this->get('width', null, $group), $group);
+				$lines[$this->lineCounter] = $word;
+				if ($hover)
+					$item->set('hover_lines', array($this->hoverLineCounter++ => array('line' => $word, 'width' => round($line_width), 'height' => $height)));
+				elseif ($ishover = $this->hover())
+					$item->set('lines', array($this->lineCounter++ => array('tag' => $this->get('tag'), 'line' => $word, 'width' => round($line_width), 'height' => $height, 'hovertag' => $ishover)));
+				else
+					$item->set('lines', array($this->lineCounter++ => array('tag' => $this->get('tag'), 'line' => $word, 'width' => round($line_width), 'height' => $height)));
+			}	
+		}
+		else
+		{
+			$this->set('width', $this->get('width', 0, $group) < $width ? $width : $this->get('width', null, $group), $group);
+
+			$text = "";
+			$line_width_total = 0 + $this->get('last_width', 0);
+			$text_line = explode(' ', trim($string));
+	
+			foreach ($text_line as $num => $words) 
+			{
+				$line_width = 0;
+				$word = $words;
+				if ($this->get('innerTag') == '/a' && $num == 0) $word = ' '.$words;
+				$letters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY);
+				foreach ($letters as $letter)
+				{
+					$bbox = imagettftext($this->get('dummy'), $font_size*$this->_params->get('resample_rate'), 0, 0, 0, $black, $font_file, $letter);
+					$line_width += (($bbox[2] + $kerning) / $this->_params->get('resample_rate'));
+				}
+				$line_width_total += $line_width;
+				
+				if ( $line_width_total > $width ) {
+					$lines[$this->lineCounter] = rtrim($text);
+					if ($hover)
+						$item->set('hover_lines', array($this->hoverLineCounter++ => array('line' => $text, 'width' => round($line_width_total - $line_width - $line_space) - $this->get('last_width', 0), 'height' => $height)));
+					elseif ($ishover = $this->hover())
+						$item->set('lines', array($this->lineCounter++ => array('tag' => $this->get('tag'), 'line' => $text, 'width' => round($line_width_total - $line_width - $line_space) - $this->get('last_width', 0), 'height' => $height, 'hovertag' => $ishover)));
+					else
+						$item->set('lines', array($this->lineCounter++ => array('tag' => $this->get('tag'), 'line' => $text, 'width' => round($line_width_total - $line_width - $line_space) - $this->get('last_width', 0), 'height' => $height)));
+
+					$line_width_total = $line_width + $line_space;
+					$text = $word.' ';
+					$this->set('last_width', 0);
+				}
+				else
+				{
+					$line_width_total += $line_space;
+					$text .= $word.' ';
+				}
 			}
-			if (in_array($value, array('font-family')))
-			{				
-				if ($item->get($value)) $item->set($value,JPATH_SITE.DS.$this->params->get('fonts_dir').DS.$item->get($value));
-				if ($item->get($value,null,'hover')) $item->set($value,JPATH_SITE.DS.$this->params->get('fonts_dir').DS.$item->get($value,null,'hover'),'hover');
+			if ($this->get('nextInnerTag') == 'a' || $this->get('nextInnerTag') == 'span' || $this->get('nextInnerTag') == '/span') {
+				$lines[$this->lineCounter] = $text;
+				$line_width_total = round($line_width_total);			
+			} else {
+				$lines[$this->lineCounter] = rtrim($text);
+				$line_width_total = round($line_width_total - $line_space);
+			}
+			if ($hover)
+				$item->set('hover_lines', array($this->hoverLineCounter++ => array('line' => $text, 'width' =>  $line_width_total - $this->get('last_width', 0), 'height' => $height)));
+			elseif ($ishover = $this->hover())
+				$item->set('lines', array($this->lineCounter++ => array('tag' => $this->get('tag'), 'line' => $text, 'width' => $line_width_total - $this->get('last_width', 0), 'height' => $height, 'hovertag' => $ishover)));
+			else
+				$item->set('lines', array($this->lineCounter++ => array('tag' => $this->get('tag'), 'line' => $text, 'width' => $line_width_total - $this->get('last_width', 0), 'height' => $height)));
+
+			if (!$hover) {
+				if ($this->get('nextInnerTag') == 'br')
+					$this->set('last_width', 0);
+				else
+					$this->set('last_width', round($line_width_total));
 			}
 		}
+		return $lines;
 	}
 
-	function createImage() {
-		// check if we have any items to process
-		if (count($this->_items) == 0) return array(false, false);;
-		
-		// check for GD support
-		if(!function_exists('ImageCreate'))
-    		$this->fatal_error('Error: Server does not support PHP image generation');
-
-		$extension = '.png';
-		foreach ($this->_items as $n=>$group)
+	/**
+	 * Creates our css string to replace in header
+	 *
+	 * @return 	css string
+	 */
+	function createCss() {
+		foreach ($this->_items as $group => $item)
 		{
-			// look for cached copy, send if it exists
-			$height = 0;
-			$hashText = '';
-			foreach ($group as $n=>$item) {
-				$hashText .= $this->createHashText($item);
-			}
-			$hash = md5($hashText);
-			$cache_filename = JPATH_SITE.DS.$this->params->get('cache_dir').DS.$hash.$extension;
-			if ($this->params->get('cache_images') && (file_exists($cache_filename)))
+			foreach ($item as $id => $values)
 			{
-				$groups[] = $item->get('group', 'default');
+				$counter = 1;
+				foreach ($values->lines as $num => $value) 
+				{
+					$this->_css .= "#pcdtr".$num."{background-image:url(url.change.".$group.");background-position:0 -".$this->get('height', 0, $group)."px;width:".$value['width']."px;height:".$value['height']."px;}\n";
+					$this->set('height', $this->get('height', 0, $group) + $value['height'], $group);
+					if (isset($value['hovertag']))
+					{
+						$hover = $values->hover_lines->$counter;
+						$this->_css .= $value['hovertag']." #pcdtr".$num."{background-position:0 -". $this->get('height', 0, $group)."px;width:".$hover['width']."px;height:".$hover['height']."px;}\n";
+						$this->set('height', $this->get('height', 0, $group) + $hover['height'], $group);
+						$counter++;
+					}					
+				}
+			}
+		}
+		return $this->_css;
+	}
+	/**
+	 * Creates all group images
+	 *
+	 * @return 	groups and hashstrings to replace css in header
+	 */
+	function createImage() {
+		if (count($this->_items) == 0)
+		{
+			imagedestroy($this->get('dummy'));
+			return array(false, false);
+		}
+		$extension = '.png';
+		
+		foreach ($this->_items as $group => $item) {
+			//check if cached file exists
+			$hash1 = $this->get('hash', 0, $group);
+			$hash2 = '';
+			foreach ($item as $id => $values)
+				$hash2 .= $values->hash;
+
+			$hash = md5($hash1.$hash2);
+
+			$cache_filename = JPATH_CACHE.DS.'pcDTR'.DS.$hash.$extension;
+			if ($this->_params->get('cache_images') && (file_exists($cache_filename)))
+			{
+				$groups[] = $group;
 				$hashfiles[] = $hash.$extension;
 				continue;
 			}
 
 			// create big image for resampling
-			$canvas = imagecreatetruecolor($this->width[$item->get('group', 'default')]*$this->params->get('resample_rate'), $this->height[$item->get('group', 'default')]*$this->params->get('resample_rate'));
+			$canvas = imagecreatetruecolor($this->get('width', null, $group)*$this->_params->get('resample_rate'), $this->get('height', null, $group)*$this->_params->get('resample_rate'));
+			
 			imagesavealpha($canvas, true);
 			$transcolor = imagecolorallocatealpha($canvas, 0,0,0,127);
 			imagefill($canvas ,0,0 ,$transcolor);
-	
-			foreach ($group as $n=>$item)
+			$height = 0;
+			foreach ($item as $id => $values)
 			{
-				$font_found = is_readable($item->get('font-family'));
-				if (!$font_found)
-					$this->fatal_error('Error: The server is missing the specified font.');
-	
-				for ($i = 0; $i < sizeof($item->get('lines',0)); ++$i)
-				{	
-					//create text image
-					list($image, $width) = $item->createItem($i, $this->params);
-					//copy text image to big image
-					imagecopy($canvas, $image, 0, $height, 0, 0, $width*$this->params->get('resample_rate'), $item->get('height')*$this->params->get('resample_rate'));
-					$height += $item->get('height')*$this->params->get('resample_rate');
+
+				$counter = 1;
+				foreach ($values->lines as $num => $value)
+
+				{
+					list($image, $width) = $this->createItem($value, $group);
+					imagecopy($canvas, $image, 0, $height, 0, 0, $width*$this->_params->get('resample_rate'), $value['height']*$this->_params->get('resample_rate'));
+					$height += $value['height']*$this->_params->get('resample_rate');
 					imagedestroy($image);
-	
-					if ($item->get('hover'))
+					
+					if ($value['hovertag'])
 					{
 						//create hover text image
-						list($image_hover, $width) = $item->createItem($i, $this->params, 'hover');
+						$hover = $values->hover_lines->$counter;
+						$hover['tag'] = $value['hovertag'];
+						list($image_hover, $width) = $this->createItem($hover, $group, 'css_hover');
 						//copy text image to big image
-						imagecopy($canvas, $image_hover, 0, $height, 0,0, $width*$this->params->get('resample_rate'), $item->get('height',null,'hover')*$this->params->get('resample_rate'));
-						$height += $item->get('height',null,'hover')*$this->params->get('resample_rate');
+						imagecopy($canvas, $image_hover, 0, $height, 0, 0, $width*$this->_params->get('resample_rate'), $hover['height']*$this->_params->get('resample_rate'));
+						$height += $hover['height']*$this->_params->get('resample_rate');
 						imagedestroy($image_hover);
-					}
+						$counter++;
+					}				
+				
 				}
 			}
 			
 			//create final image for resampling and keep alpha settings
-			$final = imagecreatetruecolor($this->width[$item->get('group', 'default')], $this->height[$item->get('group', 'default')]);
+			$final = imagecreatetruecolor($this->get('width', null, $group), $this->get('height', null, $group));
 			imagealphablending($final, false);
 			imagesavealpha($final, true);
-			imagecopyresampled( $final, $canvas, 0,0,0,0, $this->width[$item->get('group', 'default')], $this->height[$item->get('group', 'default')], $this->width[$item->get('group', 'default')]*$this->params->get('resample_rate'), $this->height[$item->get('group', 'default')]*$this->params->get('resample_rate') );
-			
+			imagecopyresampled( $final, $canvas, 0,0,0,0, $this->get('width', null, $group), $this->get('height', null, $group), $this->get('width', null, $group)*$this->_params->get('resample_rate'), $this->get('height', null, $group)*$this->_params->get('resample_rate') );
+		
 			//for testing!!
 			//header('Content-type: ' . $mime_type);
 			//imagepng($final);
-			
+
 			// save copy of image for cache
 			imagepng($final, $cache_filename);
 			
 			imagedestroy($final);
 			imagedestroy($canvas);
 
-			$groups[] = $item->get('group', 'default');
+			$groups[] = $group;
 			$hashfiles[] = $hash.$extension;
 		}
-		imagedestroy($this->dummy);		
+
+		imagedestroy($this->get('dummy'));
 		return array($groups, $hashfiles);
 	}
 
-	function imagettftextbox($font_size, $font_file, $string, $kerning, $width, $group) {
- 		$black = imagecolorallocate($this->dummy, 0, 0, 0);
-		$lines = array();
-		$line_widths = array();
-			
-		if ($width==0)
-		{
-			// wrap word with number from params
-			$wrap = wordwrap($string, $this->params->get('letter_wrap'), '\n');
-			$text_lines = explode('\n',$wrap);
-			foreach ($text_lines as $word)
-			{
-				$line_width = 0;
-				if ($this->params->get('letter_wrap_space')) $word.= end($text_lines)==$word ? '' : ' ';
-				$letters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY);
-				
-				foreach ($letters as $letter)
-				{
-					$bbox = imagettftext($this->dummy, $font_size*$this->params->get('resample_rate'), 0, 0, 0, $black, $font_file, $letter);
-					$line_width = $line_width + (($bbox[2] + $kerning) / $this->params->get('resample_rate'));
-				}
-				$lines[] = $word;
-				$line_widths[] = round($line_width);
-				$this->width[$group] = $this->width[$group] < $line_width ? $line_width : $this->width[$group];
-			}
-		} 
-		else
-		{
-			// wrap words from css property width:
-			$this->width[$group] = $this->width[$group] < $width ? $width : $this->width[$group];
-			$text = "";
-			$line_width_total = 0;
-			$text_line = explode(' ', $string);
-			foreach ($text_line as $word)
-			{
-				$line_width = 0;
-				$word.= end($text_line)==$word ? '' : ' ';
-				$letters = preg_split('//u', $word, -1, PREG_SPLIT_NO_EMPTY);
+	/**
+	 * Creates a text image for the group
+	 *
+	 * @param 	item to create, css group, type of tag 'css' or 'css_hover'
+	 * @return 	an image file and the width
+	 */
+	function createItem($item, $group, $type='css') {
+		// allocate colors, size and draw text
+		$rate = $this->_params->get('resample_rate');
+		$css = $this->get($type.':'.$item['tag'], null, $group);
 
-				foreach ($letters as $letter)
-				{
-					$bbox = imagettftext($this->dummy, $font_size*$this->params->get('resample_rate'), 0, 0, 0, $black, $font_file, $letter);
-					$line_width = $line_width + (($bbox[2] + $kerning) / $this->params->get('resample_rate'));
-				}
-				$line_width_total += $line_width;
-				
-				if ( $line_width_total > $width )
-				{
-					$lines[] = $text;
-					$line_widths[] = round($line_width_total - $line_width - ($bbox[2]-$bbox[1]) / $this->params->get('resample_rate'));
-					$this->width[$group] = $this->width[$group] < $line_width ? $line_width : $this->width[$group];
-					$line_width_total = $line_width;
-					$text = $word;
-				} else {
-					$text .= $word;
-				}
-				
-			}
-			$lines[] = $text;
-			$line_widths[] = round($line_width_total);
-			$this->width[$group] = $this->width[$group] < $line_width_total ? $line_width_total : $this->width[$group];
+		$background_rgb = $this->hex_to_rgb($this->def($css->background_color,'#ffffff'));
+		$font_rgb = $this->hex_to_rgb($this->def($css->color,'#000000'));
+		
+		$maxhbox = imagettfbbox($this->def($css->font_size,20)*$rate, 0, $this->get(array($item['tag'], 'fontFile'), 0, '_param'), $this->_params->get('test_string'));
+		// calculate font baseline
+		$int_y = abs($maxhbox[5]-$maxhbox[3])-$maxhbox[1];
+		// calculate line-height
+		$line_height = ($item['height']*$rate - (abs($maxhbox[5])+abs($maxhbox[3])))/2;
+		$int_y += $line_height;
+
+		$dip = $this->get_dip($this->get(array($item['tag'], 'fontFile'), 0, '_param'), $this->def($css->font_size,20));
+		
+		$underline_x = $x = 0;	
+		$width = $this->get('width',0,$group) > 0 ? $this->get('width',null,$group)+$rate : $item['width']+$rate+$this->def($css->letter_spacing,0);
+
+		$image = imagecreatetruecolor($width*$rate, $this->get('height',null,$group)*$rate);
+		$background_color = imagecolorallocate($image, $background_rgb['red'], $background_rgb['green'], $background_rgb['blue']);
+		imagefill($image, 0, 0, $background_color);
+		$font_color = imagecolorallocate($image, $font_rgb['red'], $font_rgb['green'], $font_rgb['blue']) ;
+		// set transparency
+		if ($this->def($css->background_transparent,0))
+		{
+			$background_color = imagecolorallocatealpha($image, $background_rgb['red'], $background_rgb['green'], $background_rgb['blue'], 127);
+			imagefill($image, 0, 0, $background_color);
 		}
-		return array($lines,$line_widths);
+		$letters = preg_split('//u', $item['line'], -1, PREG_SPLIT_NO_EMPTY);
+		foreach ($letters as $letter)
+		{	
+			$bbox = imagettftext($image, $this->def($css->font_size,20)*$rate, 0, $x, $int_y, $font_color, $this->get(array($item['tag'], 'fontFile'), 0, '_param'), $letter );
+			$x = $bbox[2] + $this->def($css->letter_spacing,0);				
+		}
+		// underline
+		$underline_y = (abs($maxhbox[5])+abs($maxhbox[3]))-($dip/2)+$line_height-1;
+		if ($this->get(array($item['tag'], 'textUnderline'), 0, '_param')) {imagefilledrectangle($image, $underline_x, $underline_y, $underline_x+$item['width']*$rate, $underline_y+($rate/2), $font_color);}
+
+		return array($image, $width);
 	}
 
+	function debug() {
+		return '<pre>'.htmlspecialchars(print_r($this, TRUE)).'</pre>';
+	}
+
+	/**
+	 * Create a hash string of a css group 
+	 */
+	function createHash() 
+	{
+		foreach ($this->_data as $group => $css) 
+		{
+			if ($group[0] == '_') continue;
+			$this->set('hash', md5(json_encode($css)), $group);
+		}
+	}
+
+	/**
+	 * Parse and groups css
+	 *
+	 * @param	css styles
+	 */
+	function groupCss($css) 
+	{
+		foreach ($css->css as $tag => $style) 
+		{
+			if (isset($style['font-size'])) $style['font-size'] = floatval($style['font-size']);
+			if (isset($style['font-family'])) $style['font-family'] = $this->findFont($style['font-family']);
+			$group = isset($style['group']) ? $this->set($tag, array('group' => $style['group']), '_param') : $this->set($tag, array('group' => 'default'), '_param');
+
+			$parentExists=false;
+
+			$tmp = preg_match('/:hover/', $tag) ? explode(':',$tag) : explode(' ',$tag);
+			array_pop($tmp);
+			$parentNode = implode(' ',$tmp);
+			if(!$this->get($parentNode, 0, '_param'))
+			{
+				$tmp = explode(' ',$parentNode);
+				array_pop($tmp);
+				$parentNode = implode(' ',$tmp);				
+			}
+			if($this->get($parentNode, 0, '_param'))
+			{
+				$this->set($tag, array('parentExists' => true), '_param');
+
+				$parentStyle = $this->get('css:'.$parentNode, 0, $group);
+
+				$values = array('font-family', 'font-size', 'group', 'width', 'text-align', 'text-decoration', 'text-transform', 'letter-spacing', 'line-height', 'color', 'background-color', 'background-transparent');
+				$valuesObj = array('font_family', 'font_size', 'group', 'width', 'text_align', 'text_decoration', 'text_transform', 'letter_spacing', 'line_height', 'color', 'background_color', 'background_transparent');
+
+				foreach ($values as $num => $value)
+					if (!isset($style[$value]) && isset($parentStyle->$valuesObj[$num])) $style[$value] = $parentStyle->$valuesObj[$num];
+			}
+			if (isset($style['text-decoration']) && $style['text-decoration'] == 'underline') $this->set($tag, array('textUnderline' => true), '_param');
+			if (isset($style['text-transform']) && $style['text-transform'] == 'uppercase') $this->set($tag, array('textUppercase' => true), '_param');
+			if (isset($style['text-transform']) && $style['text-transform'] == 'lowercase') $this->set($tag, array('textLowercase' => true), '_param');
+			if (isset($style['font-family']) && $style['font-family'] != '') $this->set($tag, array('fontFile' => JPATH_SITE.DS.$this->_params->get('fonts_dir').DS.$style['font-family']), '_param');
+			
+			$type = preg_match('/:hover/', $tag) ? 'css_hover:' : 'css:';
+			ksort($style);
+			$style = new cssItem($style);
+			$this->set($type.$tag, $style, $group);
+		}
+	}
+	
+	/**
+	 * Check if font exists
+	 *
+	 * @param string font-family to find
+	 * @return 	The found item
+	 */
 	function findFont($family)
 	{
-		$fontList = explode(',', $family);
-		$fontName = array_shift($fontList);
-		$extensions = array('.ttf', '.TTF', '.otf', '.OTF');
-		foreach($extensions as $ext)
+		$fontName = strtolower(array_shift(explode(',', $family)));
+		foreach( glob(JPATH_SITE.DS.$this->_params->get('fonts_dir').DS.'*') as $item) 
 		{
-			$test_file = JPATH_SITE.DS.$this->params->get('fonts_dir').DS.$fontName.$ext;
-
-			if(file_exists($test_file))
-			{
-				$fontName .= $ext;
-				break;
-			}
+			 $fontItem = explode('.', end(explode('/',$item)));
+			 if ($fontName == strtolower($fontItem[0]))
+			 	return implode('.',$fontItem);
 		}
-		return $fontName;
 	}
 
-	function createHashText($item)
+	/**
+	 * Check if tag is a hover tag
+	 *
+	 * @return	the tag if its found
+	 */
+	function hover() {
+		$tag = $this->get('tag');
+		$innerTag = $this->get('innerTag');
+		if ($this->get($tag.' '.$innerTag.':hover', 0, '_param'))
+			return $tag.' '.$innerTag.':hover';
+		if ($this->get($tag.':hover', 0, '_param'))
+			return $tag.':hover';
+		return false;
+	}
+
+	/**
+	 * Convert hex to rgb
+	 *
+	 * @param	hex font color
+	 * @return 	rgb output
+	 */
+	function hex_to_rgb($hex)
 	{
-		$text = '';
-		$text .= basename($item->get('font-family'));
-		$text .= basename($item->get('font-family',null,'hover'));
-		$values = array('group', 'width', 'font-size', 'text-align', 'text-decoration', 'text-transform', 'letter-spacing', 'line-height', 'color', 'background-color', 'background-transparent');
-		foreach ($values as $value)	{
-			$text .= $item->get($value);
+		// remove '#'
+		if(substr($hex,0,1) == '#')
+			$hex = substr($hex,1);
+	
+		// expand short form ('fff') color
+		if(strlen($hex) == 3) {
+			$hex = substr($hex,0,1).substr($hex,0,1).substr($hex,1,1).substr($hex,1,1).substr($hex,2,1).substr($hex,2,1);
 		}
-		foreach ($values as $value)	{
-			$text .= $item->get($value,null,'hover');
-		}
-		$text .= implode(",", $item->get('lines'));
-		return $text;
+	
+		if(strlen($hex) != 6)
+			$this->fatal_error('Error: Invalid color "'.$hex.'"');
+	
+		// convert
+		$rgb['red'] = hexdec(substr($hex,0,2));
+		$rgb['green'] = hexdec(substr($hex,2,2));
+		$rgb['blue'] = hexdec(substr($hex,4,2));
+	
+		return $rgb ;
 	}
+
+	function get_dip($font,$size)
+	{
+		$test_chars = range("a", "z");
+		$test_chars = $test_chars.strtoupper($test_chars).range(0, 9).'!@#$%^&*()\'"\\/;.,`~<>[]{}-+_-='; 
+		$box = imagettfbbox($this->_params->get('resample_rate'), 0, $font, $test_chars);
+		return $box[3];
+	}	
 
 	function fatal_error($message)
 	{
-		if (isset($_GET['debug']))die($message);
+		if (isset($_GET['debug'])) die($message);
 		
 		// send an image
 		if (function_exists('ImageCreate'))
@@ -516,120 +737,36 @@ class pcDTR
 	}
 }
 
-class pcDTRItem {
-	var $params= null;
-	var $_item = array();
-					
-	function __construct(&$params)
-	{
-		$this->params = $params;	
-	}
+class pcDTRItem
+{
+	function __construct() {}
 	
-	function set($property, $value=null, $group='default')
+	function set($property, $value=null, $array='_default')
 	{
-		$this->_item[$group]->$property = $value;
-	}
-	
-	function get($property, $default=null, $group='default')
-	{
-		if(isset($this->_item[$group]->$property)) {
-			return $this->_item[$group]->$property;
-		}
-		return $default;
-	}
-
-	function setCss($value, $style, $parent_info=null, $hover_style=null) {
-		if(isset($style[$value])) $this->set($value ,$style[$value]); 
-		else if(isset($parent_info[$value])) $this->set($value ,$parent_info[$value]);
-		
-		if ($hover_style)
+		if (is_array($value)) 
 		{
-			if (isset($hover_style[$value])) $this->set($value ,$hover_style[$value], 'hover');
-			else if(isset($style[$value])) $this->set($value ,$style[$value], 'hover'); 
-			else if(isset($parent_info[$value])) $this->set($value ,$parent_info[$value], 'hover');
-		}
-	}
-
-	function createItem($n, $params, $type='default') {
-		// allocate colors, size and draw text
-		$background_rgb = $this->hex_to_rgb($this->get('background-color','#ffffff',$type));
-		$font_rgb = $this->hex_to_rgb($this->get('color','#000000',$type));
-		
-		$maxhbox = imagettfbbox($this->get('font-size',20,$type)*$this->params->get('resample_rate'), 0, $this->get('font-family',null,$type), $params->get('test_string'));
-		// calculate font baseline
-		$int_y = abs($maxhbox[5]-$maxhbox[3])-$maxhbox[1];
-		// calculate line-height
-		$line_height = ($this->get('height',null,$type)*$this->params->get('resample_rate') - (abs($maxhbox[5])+abs($maxhbox[3])))/2;
-		$int_y += $line_height;
-
-		$dip = $this->get_dip($this->get('font-family',null,$type), $this->get('font-size',null,$type));
-		
-		$line_width = $this->get('line-widths',null,$type);
-		if ($this->get('text-align','left',$type) == 'right') 
-		{
-			$underline_x = $x = $this->get('width',0,$type) > 0 ? ($this->get('width',null,$type) - $line_width[$n])*$this->params->get('resample_rate') : 0;
-		} 
-		elseif ($this->get('text-align','left',$type) == 'center')
-		{	
-			$underline_x = $x = $this->get('width',0,$type) > 0 ? (($this->get('width',null,$type) - $line_width[$n])*$this->params->get('resample_rate')) / 2 : 0;
+			foreach ($value as $key => $value)
+				$this->$property->$key = $value;
 		} 
 		else 
 		{
-			$underline_x = $x = 0;	
+			$this->$property = $value;
 		}
-		$width = $this->get('width',0,$type) > 0 ? $this->get('width',null,$type)+$this->params->get('resample_rate') : $line_width[$n]+$this->params->get('resample_rate')+$this->get('letter-spacing',0,$type);
-
-		$image = imagecreatetruecolor($width*$this->params->get('resample_rate'), $this->get('height',null,$type)*$this->params->get('resample_rate'));
-		$background_color = imagecolorallocate($image, $background_rgb['red'], $background_rgb['green'], $background_rgb['blue']);
-		imagefill($image, 0, 0, $background_color);
-		$font_color = imagecolorallocate($image, $font_rgb['red'], $font_rgb['green'], $font_rgb['blue']) ;
-		// set transparency
-		if ($this->get('background-transparent',false,$type))
-		{
-			$background_color = imagecolorallocatealpha($image, $background_rgb['red'], $background_rgb['green'], $background_rgb['blue'], 127);
-			imagefill($image, 0, 0, $background_color);
-		}
-		$text = $this->get('lines',null,$type);
-		$letters = preg_split('//u', $text[$n], -1, PREG_SPLIT_NO_EMPTY);
-		foreach ($letters as $letter)
-		{	
-			$bbox = imagettftext($image, $this->get('font-size',20,$type)*$this->params->get('resample_rate'), 0, $x, $int_y, $font_color, $this->get('font-family',null,$type), $letter );
-			$x = $bbox[2] + $this->get('letter-spacing', 0,$type);				
-		}
-		// underline
-		$underline_y = (abs($maxhbox[5])+abs($maxhbox[3])+($this->params->get('resample_rate')*2))-($dip/2)+$line_height;
-		if ($this->get('text-decoration',null,$type)=='underline') imagefilledrectangle($image, $underline_x, $underline_y, $underline_x+$line_width[$n]*$this->params->get('resample_rate'), $underline_y+($this->params->get('resample_rate')/2), $font_color);
-
-		return array($image, $width);
 	}
+}
 
-	function hex_to_rgb($hex)
+class cssItem
+{
+	function __construct(&$style) 
 	{
-		// remove '#'
-		if(substr($hex,0,1) == '#')
-			$hex = substr($hex,1);
-	
-		// expand short form ('fff') color
-		if(strlen($hex) == 3) {
-			$hex = substr($hex,0,1).substr($hex,0,1).substr($hex,1,1).substr($hex,1,1).substr($hex,2,1).substr($hex,2,1);
+		foreach ($style as $key => $value) {
+			$key = str_replace('-', '_', $key);
+			if(substr($value,-2,2) == 'px')
+				$this->$key = floatval($value);
+			else
+				$this->$key = $value;
 		}
-	
-		if(strlen($hex) != 6)
-			pcDTR::fatal_error('Error: Invalid color "'.$hex.'"');
-	
-		// convert
-		$rgb['red'] = hexdec(substr($hex,0,2));
-		$rgb['green'] = hexdec(substr($hex,2,2));
-		$rgb['blue'] = hexdec(substr($hex,4,2));
-	
-		return $rgb ;
 	}
-
-	function get_dip($font,$size)
-	{
-		$test_chars = range("a", "z");
-		$test_chars = $test_chars.strtoupper($test_chars).range(0, 9).'!@#$%^&*()\'"\\/;.,`~<>[]{}-+_-='; 
-		$box = imagettfbbox($size*$this->params->get('resample_rate'), 0, $font, $test_chars);
-		return $box[3];
-	}	
+	
+	function __get($var) {}
 }
