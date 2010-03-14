@@ -4,7 +4,7 @@
  * Does all the magic!
  *
  * @package    pcDTR
- * @version    3.1.1
+ * @version    3.1.2
  *
  * @author     Otherland <info@otherland.se>
  * @link       http://www.otherland.se
@@ -35,7 +35,7 @@ jimport( 'joomla.plugin.plugin' );
  */
 class plgSystempcDTR extends JPlugin
 {
-	var $poweredBy			= '<!-- pcDTR 3.1.1 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
+	var $poweredBy			= '<!-- pcDTR 3.1.2 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
 	function plgSystempcDTR(& $subject, $config)
 	{
 		global $mainframe;
@@ -54,7 +54,7 @@ class plgSystempcDTR extends JPlugin
 		$pluginParams	= new JParameter($plugin->params);
 
 		$document->addStyleSheet(JURI::base(true).'/'.$pluginParams->get('heading_css'),'text/css',"screen");
-		$document->addStyleSheet(JURI::base(true).'plugins/system/pcdtr/css.php','text/css',"screen");
+		$document->addStyleSheet(JURI::base(true).'/plugins/system/pcdtr/css.php','text/css',"screen");
 		$document->addStyleDeclaration('css.change');
 
 		$path = JPath::clean(JPATH_CACHE.DS.'pcDTR'.DS);
