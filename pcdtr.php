@@ -96,13 +96,14 @@ class plgSystempcDTR extends JPlugin
 			{
 				if (substr($node->class,-5)=='pcdtr') continue;
 				$tmp = $node->parent;
-				for ( $i = 1 ; ; $i++) {
-					$tmp = $tmp->parent;
-					if (!isset($tmp))
+				for ($i = 1; ; $i++) {
+					if (!isset($tmp)) {
 						break;
-					else 
+					} else {
 						$skip = in_array($tmp->class,$skipClass) ? $skip = 1 : $skip = 0;
 						if ($skip) break;
+					}
+					$tmp = $tmp->parent;
 				}
 				if ($skip) continue;
 
@@ -476,7 +477,6 @@ class pcDTR
 		foreach ($this->_items as $group => $item) {
 			//check if cached file exists
 			$hash1 = $this->get('hash', 0, $group);
-
 			$hash2 = '';
 			foreach ($item as $id => $values)
 				$hash2 .= $values->hash;
