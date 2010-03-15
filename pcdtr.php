@@ -101,9 +101,9 @@ class plgSystempcDTR extends JPlugin
 					if (!isset($tmp))
 						break;
 					else 
-						if (in_array($tmp->class,$skipClass)) {$skip = 1; break;}
+						$skip = in_array($tmp->class,$skipClass) ? $skip = 1 : skip = 0;
 				}
-				if (isset($skip)) continue;
+				if ($skip) continue;
 
 				if (!$dtr->get(array($tag, 'fontFile'), 0, '_param'))
 				{
