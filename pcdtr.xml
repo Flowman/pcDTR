@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<install version="1.5" type="plugin" group="system" method="upgrade">
+<install version="1.5" type="plugin" group="system">
 	<name>System - pcDTR</name>
 	<author>Otherland</author>
 	<creationDate>March 2010</creationDate>
@@ -7,13 +7,11 @@
 	<license>http://www.gnu.org/licenses/gpl-3.0.html GNU/GPL</license>
 	<authorEmail>info@otherland.se</authorEmail>
 	<authorUrl>www.otherland.se</authorUrl>
-	<version>3.1.3</version>
-	<description>
-	<![CDATA[
-	<h2>pcDTR 3.1.3 for Joomla 1.5.x from <a href="http://pcdtr.otherland.se/" target="_blank">http://pcdtr.otherland.se</a></h2>
-	<h3>Our Request: If you like this extension, PLEASE vote for it on <a href="http://extensions.joomla.org/extensions/style-a-design/typography/10232" target="_blank">Joomla! Extensions Directory!</a></h3>
-	]]>
-	</description>
+	<version>3.1.4</version>
+	<description>PCDTR DESCRIPTION</description>
+ 	<languages>
+      <language tag="en-GB">en-GB.plg_system_pcdtr.ini</language>
+    </languages>
 	<files>
 		<filename plugin="pcdtr">pcdtr.php</filename>
 		<filename>pcdtr/index.html</filename>
@@ -26,15 +24,16 @@
 		<filename>css/styles.css</filename>
 	</media>
 	<params>
-		<param name="heading_css" type="text" size="50" default="media/pcdtr/css/styles.css" label="Css file" description="" />
-		<param name="fonts_dir" type="text" size="50" default="media/pcdtr/fonts" label="Fonts folder" description="" />
-		<param name="cache_images" type="radio" default="1" label="Enable Cache" description="">
+		<param name="default_css" type="text" size="60" default="media/pcdtr/css/styles.css" label="PCDTR LABEL DEFAULT" description="PCDTR DESC DEFAULT" />
+		<param name="custom_css" type="textarea" rows="2" cols="45" default="" label="PCDTR LABEL CUSTOM" description="PCDTR DESC CUSTOM" />
+		<param name="fonts_dir" type="text" size="60" default="media/pcdtr/fonts" label="PCDTR LABEL FONTS" description="PCDTR DESC FONTS" />
+		<param name="cache_images" type="radio" default="1" label="PCDTR LABEL CACHE" description="PCDTR DESC CACHE">
 			<option value="0">No</option>
 			<option value="1">Yes</option>
 		</param>
-		<param name="letter_wrap" type="text" size="5" default="25" label="Letter wrap" description="" />
-		<param name="resample_rate" type="text" size="1" default="1" label="Resample rate" description="Must be a number between 1-4" />
-		<param name="test_string" type="text" size="20" default="ÁIJQÇjgx" label="Test string" description="Add something like ÁIJQÇjgx|/@#()" />
-		<param name="skip_class" type="text" size="50" default="mce_editable,mceEditor" label="Skip class" description="" />
+		<param name="letter_wrap" type="text" size="5" default="25" label="PCDTR LABEL WRAP" description="PCDTR DESC WRAP" />
+		<param name="resample_rate" type="text" size="1" default="1" label="PCDTR LABEL RATE" description="PCDTR DESC RATE" />
+		<param name="test_string" type="text" size="20" default="ÁIJQÇjgx/@#()" label="PCDTR LABEL TEST" description="PCDTR DESC TEST" />
+		<param name="skip_class" type="text" size="50" default="mce_editable,mceEditor" label="PCDTR LABEL SKIP" description="PCDTR DESC SKIP" />
 	</params>
 </install>

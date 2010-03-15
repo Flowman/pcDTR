@@ -4,7 +4,7 @@
  * Does all the magic!
  *
  * @package    pcDTR
- * @version    3.1.3
+ * @version    3.1.4
  *
  * @author     Otherland <info@otherland.se>
  * @link       http://www.otherland.se
@@ -35,7 +35,7 @@ jimport( 'joomla.plugin.plugin' );
  */
 class plgSystempcDTR extends JPlugin
 {
-	var $poweredBy			= '<!-- pcDTR 3.1.3 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
+	var $poweredBy			= '<!-- pcDTR 3.1.4 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
 	function plgSystempcDTR(& $subject, $config)
 	{
 		global $mainframe;
@@ -53,7 +53,7 @@ class plgSystempcDTR extends JPlugin
 		$plugin			=& JPluginHelper::getPlugin('system', 'pcdtr');
 		$pluginParams	= new JParameter($plugin->params);
 
-		$document->addStyleSheet(JURI::base(true).'/'.$pluginParams->get('heading_css'),'text/css',"screen");
+		$document->addStyleSheet(JURI::base(true).'/'.$this->getCss($pluginParams),'text/css',"screen");
 		$document->addStyleSheet(JURI::base(true).'/plugins/system/pcdtr/css.php','text/css',"screen");
 		$document->addStyleDeclaration('css.change');
 
@@ -77,9 +77,9 @@ class plgSystempcDTR extends JPlugin
 		$css			= new CSS();
 		$dom			= new simple_html_dom();
 		$body 			= JResponse::getBody();
-		$skipClass 		= explode(',',str_replace(' ', '', $pluginParams->get('skip_class')));
+		$skipClass 		= explode(',', str_replace(' ', '', $pluginParams->get('skip_class')));
 
-		$css->parseFile($pluginParams->get('heading_css'));
+		$css->parseFile($this->getCss($pluginParams));
 		$css->css = $css->css;
 		if (!is_array($css->csstags)) return false;
 		$css->csstags = array_reverse($css->csstags,true);
@@ -96,14 +96,14 @@ class plgSystempcDTR extends JPlugin
 			{
 				if (substr($node->class,-5)=='pcdtr') continue;
 				$tmp = $node->parent;
-				for ($i = 1; ; $i++) {
+				for ( $i = 1 ; ; $i++) {
 					$tmp = $tmp->parent;
 					if (!isset($tmp))
 						break;
 					else 
-						$skip = in_array($tmp->class,$skipClass) ? $skip = 1 : skip = 0;
+						if(in_array($tmp->class,$skipClass)) {$skip = 1; break;}
 				}
-				if ($skip) continue;
+				if (isset($skip)) continue;
 
 				if (!$dtr->get(array($tag, 'fontFile'), 0, '_param'))
 				{
@@ -144,7 +144,21 @@ class plgSystempcDTR extends JPlugin
 		$dom = str_replace('</body>', $this->poweredBy.'</body>', $dom);
 		JResponse::setBody($dom);
 	}
-	
+
+	function getCss($params)
+	{
+		$cssFile		= $params->get('default_css');
+		$customCss 		= explode(',', $params->get('custom_css'));
+		
+		foreach ($customCss as $item) {
+			list($template, $templateCss) = explode(' ', $item);
+			if (JFactory::getApplication()->getTemplate() == $template) {$templateCss = $templateCss; continue;}
+		}
+		if (is_readable($templateCss)) 
+			return $templateCss;
+		else
+			return $cssFile;
+	}
 }
 
 class pcDTR
@@ -285,7 +299,6 @@ class pcDTR
 
 		$group = $this->set('group', $this->get(array($tag, 'group'), 'default', '_param'));
 		$decoded = html_entity_decode($string, ENT_COMPAT, 'UTF-8');
-
 		$decoded = $this->get(array($tag, 'textUppercase'), 0, '_param') ? mb_strtoupper($decoded) : $decoded;
 		$decoded = $this->get(array($tag, 'textLowercase'), 0, '_param') ? mb_strtolower($decoded) : $decoded;
 
@@ -359,7 +372,6 @@ class pcDTR
 		else
 		{
 			$this->set('width', $this->get('width', 0, $group) < $width ? $width : $this->get('width', null, $group), $group);
-
 			$text = "";
 			$line_width_total = 0 + $this->get('last_width', 0);
 			$text_line = explode(' ', trim($string));
@@ -467,7 +479,7 @@ class pcDTR
 			foreach ($item as $id => $values)
 				$hash2 .= $values->hash;
 
-			$hash = md5($hash1.$hash2);
+			$hash = md5($hash1.$hash2.$this->_params->get('resample_rate'));
 
 			$cache_filename = JPATH_CACHE.DS.'pcDTR'.DS.$hash.$extension;
 			if ($this->_params->get('cache_images') && (file_exists($cache_filename)))
@@ -479,17 +491,14 @@ class pcDTR
 
 			// create big image for resampling
 			$canvas = imagecreatetruecolor($this->get('width', null, $group)*$this->_params->get('resample_rate'), $this->get('height', null, $group)*$this->_params->get('resample_rate'));
-			
 			imagesavealpha($canvas, true);
 			$transcolor = imagecolorallocatealpha($canvas, 0,0,0,127);
 			imagefill($canvas ,0,0 ,$transcolor);
 			$height = 0;
 			foreach ($item as $id => $values)
 			{
-
 				$counter = 1;
 				foreach ($values->lines as $num => $value)
-
 				{
 					list($image, $width) = $this->createItem($value, $group);
 					imagecopy($canvas, $image, 0, $height, 0, 0, $width*$this->_params->get('resample_rate'), $value['height']*$this->_params->get('resample_rate'));
@@ -511,7 +520,6 @@ class pcDTR
 				
 				}
 			}
-			
 			//create final image for resampling and keep alpha settings
 			$final = imagecreatetruecolor($this->get('width', null, $group), $this->get('height', null, $group));
 			imagealphablending($final, false);
@@ -531,7 +539,6 @@ class pcDTR
 			$groups[] = $group;
 			$hashfiles[] = $hash.$extension;
 		}
-
 		imagedestroy($this->get('dummy'));
 		return array($groups, $hashfiles);
 	}
