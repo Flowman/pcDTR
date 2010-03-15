@@ -101,7 +101,8 @@ class plgSystempcDTR extends JPlugin
 					if (!isset($tmp))
 						break;
 					else 
-						$skip = in_array($tmp->class,$skipClass) ? $skip = 1 : skip = 0;
+						$skip = in_array($tmp->class,$skipClass) ? $skip = 1 : $skip = 0;
+						if ($skip) break;
 				}
 				if ($skip) continue;
 
@@ -284,7 +285,6 @@ class pcDTR
 
 	/**
 	 * Adds pcdtr spans to out elements
-
 	 *
 	 * @param 	string text to dtr, element tag, innertag
 	 * @return 	a span with text and id
@@ -476,6 +476,7 @@ class pcDTR
 		foreach ($this->_items as $group => $item) {
 			//check if cached file exists
 			$hash1 = $this->get('hash', 0, $group);
+
 			$hash2 = '';
 			foreach ($item as $id => $values)
 				$hash2 .= $values->hash;
