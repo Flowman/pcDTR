@@ -95,8 +95,15 @@ class plgSystempcDTR extends JPlugin
 			foreach ($dom->find($tag) as $node)
 			{
 				if (substr($node->class,-5)=='pcdtr') continue;
-				
-				if(in_array($node->parent->class,$skipClass)) continue;
+				$tmp = $node->parent;
+				for ($i = 1; ; $i++) {
+					$tmp = $tmp->parent;
+					if (!isset($tmp))
+						break;
+					else 
+						if (in_array($tmp->class,$skipClass)) {$skip = 1; break;}
+				}
+				if (isset($skip)) continue;
 
 				if (!$dtr->get(array($tag, 'fontFile'), 0, '_param'))
 				{
@@ -474,7 +481,6 @@ class pcDTR
 			$canvas = imagecreatetruecolor($this->get('width', null, $group)*$this->_params->get('resample_rate'), $this->get('height', null, $group)*$this->_params->get('resample_rate'));
 			
 			imagesavealpha($canvas, true);
-
 			$transcolor = imagecolorallocatealpha($canvas, 0,0,0,127);
 			imagefill($canvas ,0,0 ,$transcolor);
 			$height = 0;
