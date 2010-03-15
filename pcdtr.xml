@@ -7,10 +7,10 @@
 	<license>http://www.gnu.org/licenses/gpl-3.0.html GNU/GPL</license>
 	<authorEmail>info@otherland.se</authorEmail>
 	<authorUrl>www.otherland.se</authorUrl>
-	<version>3.1.2</version>
+	<version>3.1.3</version>
 	<description>
 	<![CDATA[
-	<h2>pcDTR 3.1.2 for Joomla 1.5.x from <a href="http://pcdtr.otherland.se/" target="_blank">http://pcdtr.otherland.se</a></h2>
+	<h2>pcDTR 3.1.3 for Joomla 1.5.x from <a href="http://pcdtr.otherland.se/" target="_blank">http://pcdtr.otherland.se</a></h2>
 	<h3>Our Request: If you like this extension, PLEASE vote for it on <a href="http://extensions.joomla.org/extensions/style-a-design/typography/10232" target="_blank">Joomla! Extensions Directory!</a></h3>
 	]]>
 	</description>
@@ -35,6 +35,6 @@
 		<param name="letter_wrap" type="text" size="5" default="25" label="Letter wrap" description="" />
 		<param name="resample_rate" type="text" size="1" default="1" label="Resample rate" description="Must be a number between 1-4" />
 		<param name="test_string" type="text" size="20" default="ÁIJQÇjgx" label="Test string" description="Add something like ÁIJQÇjgx|/@#()" />
-		<param name="skip_class" type="text" size="50" default="mce_editable, mceEditor" label="Skip class" description="" />
+		<param name="skip_class" type="text" size="50" default="mce_editable,mceEditor" label="Skip class" description="" />
 	</params>
 </install>

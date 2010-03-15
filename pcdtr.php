@@ -4,7 +4,7 @@
  * Does all the magic!
  *
  * @package    pcDTR
- * @version    3.1.2
+ * @version    3.1.3
  *
  * @author     Otherland <info@otherland.se>
  * @link       http://www.otherland.se
@@ -35,7 +35,7 @@ jimport( 'joomla.plugin.plugin' );
  */
 class plgSystempcDTR extends JPlugin
 {
-	var $poweredBy			= '<!-- pcDTR 3.1.2 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
+	var $poweredBy			= '<!-- pcDTR 3.1.3 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
 	function plgSystempcDTR(& $subject, $config)
 	{
 		global $mainframe;
@@ -77,8 +77,8 @@ class plgSystempcDTR extends JPlugin
 		$css			= new CSS();
 		$dom			= new simple_html_dom();
 		$body 			= JResponse::getBody();
-		$skipClass 		= explode(',',$pluginParams->get('skip_class'));
-		
+		$skipClass 		= explode(',',str_replace(' ', '', $pluginParams->get('skip_class')));
+
 		$css->parseFile($pluginParams->get('heading_css'));
 		$css->css = $css->css;
 		if (!is_array($css->csstags)) return false;
@@ -95,7 +95,8 @@ class plgSystempcDTR extends JPlugin
 			foreach ($dom->find($tag) as $node)
 			{
 				if (substr($node->class,-5)=='pcdtr') continue;
-				foreach ($skipClass as $class) if ($node->parent->class == $class) continue;
+				
+				if(in_array($node->parent->class,$skipClass)) continue;
 
 				if (!$dtr->get(array($tag, 'fontFile'), 0, '_param'))
 				{
@@ -473,6 +474,7 @@ class pcDTR
 			$canvas = imagecreatetruecolor($this->get('width', null, $group)*$this->_params->get('resample_rate'), $this->get('height', null, $group)*$this->_params->get('resample_rate'));
 			
 			imagesavealpha($canvas, true);
+
 			$transcolor = imagecolorallocatealpha($canvas, 0,0,0,127);
 			imagefill($canvas ,0,0 ,$transcolor);
 			$height = 0;
