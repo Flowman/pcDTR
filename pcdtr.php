@@ -4,7 +4,7 @@
  * Does all the magic!
  *
  * @package    pcDTR
- * @version    3.1.4
+ * @version    3.1.5
  *
  * @author     Otherland <info@otherland.se>
  * @link       http://www.otherland.se
@@ -35,7 +35,7 @@ jimport( 'joomla.plugin.plugin' );
  */
 class plgSystempcDTR extends JPlugin
 {
-	var $poweredBy			= '<!-- pcDTR 3.1.4 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
+	var $poweredBy			= '<!-- pcDTR 3.1.5 by www.otherland.se %s -->';  // remove this if you wish - or keep it. thanks :)!
 	function plgSystempcDTR(& $subject, $config)
 	{
 		global $mainframe;
@@ -132,7 +132,7 @@ class plgSystempcDTR extends JPlugin
 		{
 			foreach ($groups as $n=>$group)
 			{
-				$outPath = JURI::base(true).DS.substr(JPATH_CACHE, strlen(JPATH_BASE)+1).DS.'pcDTR'.DS;
+				$outPath = substr(JPATH_CACHE, strlen(JPATH_BASE)+1).'/'.'pcDTR'.'/';
 				$dom = str_replace('url.change.'.$group, $outPath.$change[$n], $dom);
 			}
 		}
@@ -151,7 +151,7 @@ class plgSystempcDTR extends JPlugin
 	{
 		$cssFile		= $params->get('default_css');
 		$customCss 		= explode(',', $params->get('custom_css'));
-		
+		if ($customCss[0] == '') return $cssFile;
 		foreach ($customCss as $item) {
 			list($template, $templateCss) = explode(' ', $item);
 			if (JFactory::getApplication()->getTemplate() == $template) {$templateCss = $templateCss; continue;}
@@ -507,7 +507,7 @@ class pcDTR
 					$height += $value['height']*$this->_params->get('resample_rate');
 					imagedestroy($image);
 					
-					if ($value['hovertag'])
+					if (isset($value['hovertag']))
 					{
 						//create hover text image
 						$hover = $values->hover_lines->$counter;
@@ -720,8 +720,8 @@ class pcDTR
 
 	function get_dip($font,$size)
 	{
-		$test_chars = range("a", "z");
-		$test_chars = $test_chars.strtoupper($test_chars).range(0, 9).'!@#$%^&*()\'"\\/;.,`~<>[]{}-+_-='; 
+		$test_chars = array_merge(range('0','9'),range('a','z'),range('A','Z'));
+		$test_chars = implode('',$test_chars).'!@#$%^&*()\'"\\/;.,`~<>[]{}-+_-='; 
 		$box = imagettfbbox($this->_params->get('resample_rate'), 0, $font, $test_chars);
 		return $box[3];
 	}	
