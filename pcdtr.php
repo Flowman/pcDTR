@@ -132,7 +132,7 @@ class plgSystempcDTR extends JPlugin
 		{
 			foreach ($groups as $n=>$group)
 			{
-				$outPath = substr(JPATH_CACHE, strlen(JPATH_BASE)+1).'/'.'pcDTR'.'/';
+				$outPath = JURI::base(true).DS.substr(JPATH_CACHE, strlen(JPATH_BASE)+1).DS.'pcDTR'.DS;
 				$dom = str_replace('url.change.'.$group, $outPath.$change[$n], $dom);
 			}
 		}
