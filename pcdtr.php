@@ -20,7 +20,7 @@
 // no direct access
 defined( '_JEXEC' ) or die( 'Restricted access' );
 defined( 'DS' ) || define( 'DS', DIRECTORY_SEPARATOR );
-//error_reporting(E_ERROR | E_WARNING | E_PARSE | E_NOTICE);
+error_reporting(E_ERROR | E_WARNING | E_PARSE | E_NOTICE);
 
 if($mainframe->isAdmin()) {
 	return;
@@ -89,7 +89,7 @@ class plgSystempcDTR extends JPlugin
 		$t['start_dom'] = microtime(true);
 		$dom->load($body);
 		
-		foreach ($css->csstags as $tag) {
+		foreach ($dtr->csstags as $tag) {
 			if ($dtr->get(array($tag, 'parentExists'), 0, '_param')) continue;
 			
 			foreach ($dom->find($tag) as $node)
@@ -655,6 +655,7 @@ class pcDTR
 			ksort($style);
 			$style = new cssItem($style);
 			$this->set($type.$tag, $style, $group);
+			$this->csstags[] = $tag;
 		}
 	}
 	
